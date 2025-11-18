@@ -184,6 +184,18 @@ def parse_args():
     parser.add_argument('--mlp_width', type=int, default=256)
     parser.add_argument('--station_lr', type=float, default=0.0001)
 
+    # GLAFF + D3A fusion options
+    parser.add_argument('--time_features', type=int, default=4, help='dimension of timestamp features')
+    parser.add_argument('--energy_threshold', type=float, default=0.05, help='virtual drift energy distance threshold')
+    parser.add_argument('--virtual_min_samples', type=int, default=8, help='minimal samples before virtual drift test')
+    parser.add_argument('--residual_base_sigma', type=float, default=0.1, help='baseline std for residual drift check')
+    parser.add_argument('--residual_mu_thresh', type=float, default=3.0, help='multiplier for residual mean drift trigger')
+    parser.add_argument('--residual_sigma_thresh', type=float, default=3.0, help='multiplier for residual std drift trigger')
+    parser.add_argument('--residual_window', type=int, default=20, help='window size for residual drift detection')
+    parser.add_argument('--glaff_buffer_size', type=int, default=64, help='buffer size for glaff fusion')
+    parser.add_argument('--glaff_ft_lr', type=float, default=1e-3, help='learning rate for local branch fine-tune')
+    parser.add_argument('--glaff_ft_epochs', type=int, default=1, help='epochs for local branch fine-tune')
+
     parser.add_argument('--sleep_interval', type=int, default=1, help='latent dimension of koopman embedding')
     parser.add_argument('--sleep_epochs', type=int, default=1, help='latent dimension of koopman embedding')
     parser.add_argument('--sleep_kl_pre', type=float, default=0, help='latent dimension of koopman embedding')
