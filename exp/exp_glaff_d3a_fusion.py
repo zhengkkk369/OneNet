@@ -1,7 +1,7 @@
 import os
 import time
 from collections import deque
-from typing import Tuple
+from typing import Dict, Type
 
 import numpy as np
 import torch
@@ -13,7 +13,11 @@ from tqdm import tqdm
 from data.data_loader import Dataset_Custom, Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Pred
 from einops import rearrange
 from exp.exp_basic import Exp_Basic
-from exp.exp_patch import net as PatchTST
+from exp.exp_cross_former import Exp_TS2VecSupervised as ExpCrossFormer
+from exp.exp_dlinear import Exp_TS2VecSupervised as ExpDLinear
+from exp.exp_fedformer import Exp_TS2VecSupervised as ExpFedformer
+from exp.exp_informer import Exp_TS2VecSupervised as ExpInformer
+from exp.exp_patch import Exp_TS2VecSupervised as ExpPatch
 from models.ts2vec.fsnet import TSEncoder
 from utils.buffer import Buffer
 from utils.metrics import cumavg, metric
@@ -90,7 +94,7 @@ def energy_distance(data_ref: torch.Tensor, data_new: torch.Tensor) -> torch.Ten
     return 2 * ref_new - new_new - ref_ref
 
 
-class Exp_TS2VecSupervised(Exp_Basic):
+class ExpGLAFF_TS2Vec(Exp_Basic):
     def __init__(self, args):
         self.args = args
         self.device = self._acquire_device()
@@ -380,4 +384,36 @@ class Exp_TS2VecSupervised(Exp_Basic):
         torch.cuda.empty_cache()
 
 
-net = PatchTST
+_BACKBONE_DISPATCH: Dict[str, Type[Exp_Basic]] = {
+    'ts2vec': ExpGLAFF_TS2Vec,
+    'dlinear': ExpDLinear,
+    'patchtst': ExpPatch,
+    'fedformer': ExpFedformer,
+    'autoformer': ExpFedformer,  # share the same experiment runner
+    'informer': ExpInformer,
+    'crossformer': ExpCrossFormer,
+}
+
+
+def _resolve_backbone(name: str) -> str:
+    """Normalize backbone names for dispatching."""
+
+    return str(name).lower()
+
+
+class Exp_TS2VecSupervised:
+    """Dispatch to the proper experiment class per backbone for GLAFF fusion."""
+
+    def __init__(self, args):
+        backbone = _resolve_backbone(getattr(args, 'glaff_backbone', 'ts2vec'))
+        if backbone not in _BACKBONE_DISPATCH:
+            raise ValueError(
+                f"Unsupported glaff_backbone '{backbone}'. Available: {sorted(_BACKBONE_DISPATCH.keys())}"
+            )
+        self._exp = _BACKBONE_DISPATCH[backbone](args)
+
+    def __getattr__(self, name):
+        return getattr(self._exp, name)
+
+    def __repr__(self):
+        return f"Exp_TS2VecSupervised(dispatch={self._exp!r})"

@@ -202,6 +202,7 @@ def parse_args():
     parser.add_argument('--residual_sigma_thresh', type=float, default=3.0, help='multiplier for residual std drift trigger')
     parser.add_argument('--residual_window', type=int, default=20, help='window size for residual drift detection')
     parser.add_argument('--glaff_buffer_size', type=int, default=64, help='buffer size for glaff fusion')
+    parser.add_argument('--glaff_backbone', type=str, default='ts2vec', help='backbone experiment dispatched for glaff fusion')
     parser.add_argument('--glaff_ft_lr', type=float, default=1e-3, help='learning rate for local branch fine-tune')
     parser.add_argument('--glaff_ft_epochs', type=int, default=1, help='epochs for local branch fine-tune')
 
