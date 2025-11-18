@@ -410,6 +410,8 @@ class Exp_TS2VecSupervised:
             raise ValueError(
                 f"Unsupported glaff_backbone '{backbone}'. Available: {sorted(_BACKBONE_DISPATCH.keys())}"
             )
+        # Echo the resolved backbone to make experiment selection transparent in logs
+        print(f"[GLAFF Fusion] Using backbone: {backbone}")
         self._exp = _BACKBONE_DISPATCH[backbone](args)
 
     def __getattr__(self, name):
