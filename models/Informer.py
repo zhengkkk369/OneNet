@@ -5,6 +5,7 @@ from utils.masking import TriangularCausalMask, ProbMask
 from layers.Transformer_EncDec import Decoder, DecoderLayer, Encoder, EncoderLayer, ConvLayer
 from layers.SelfAttention_Family import FullAttention, ProbAttention, AttentionLayer
 from layers.Embed import DataEmbedding
+from plugin.Plugin.model import Plugin
 import numpy as np
 
 
@@ -16,6 +17,9 @@ class Model(nn.Module):
         super(Model, self).__init__()
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
+        self.flag = getattr(configs, 'flag', None)
+        if self.flag == 'Plugin':
+            self.plugin = Plugin(configs, configs.c_out)
 
         # Embedding
         self.enc_embedding = DataEmbedding(configs.enc_in, configs.d_model, configs.embed, configs.freq,
@@ -74,7 +78,14 @@ class Model(nn.Module):
         dec_out = self.dec_embedding(x_dec, x_mark_dec)
         dec_out = self.decoder(dec_out, enc_out, x_mask=dec_self_mask, cross_mask=dec_enc_mask)
 
+        pred = dec_out[:, -self.pred_len:, :]
+        if self.flag == 'Plugin':
+            x_enc_copy = x_enc.clone()
+            x_mark_enc_copy = x_mark_enc.clone()
+            x_mark_dec_copy = x_mark_dec.clone()
+            pred = self.plugin(x_enc_copy, x_mark_enc_copy, pred, x_mark_dec_copy[:, -self.pred_len:, :])
+
         if self.output_attention:
-            return dec_out[:, -self.pred_len:, :], attns
+            return pred, attns
         else:
-            return dec_out[:, -self.pred_len:, :]
+            return pred

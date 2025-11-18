@@ -125,6 +125,7 @@ def parse_args():
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
     parser.add_argument('--inverse', action='store_true', help='inverse output data', default=False)
+    parser.add_argument('--flag', type=str, default=None, help='use GLAFF plugin when set to "Plugin"')
     parser.add_argument('--method', type=str, default='onenet_fsnet')
 
     # PatchTST
@@ -174,6 +175,14 @@ def parse_args():
     parser.add_argument('--cross_activation', type=str, default='tanh',
                         help='mwt cross atention activation function tanh or softmax')
     parser.add_argument('--moving_avg', default=[24], help='window size of moving average')
+
+    # GLAFF plugin configuration
+    parser.add_argument('--dim', type=int, default=64, help='hidden dimension for GLAFF plugin encoder')
+    parser.add_argument('--head_num', type=int, default=4, help='attention heads for GLAFF plugin encoder')
+    parser.add_argument('--dff', type=int, default=256, help='feedforward dimension for GLAFF plugin encoder')
+    parser.add_argument('--layer_num', type=int, default=2, help='encoder layers for GLAFF plugin encoder')
+    parser.add_argument('--hist_len', type=int, default=96, help='history length for GLAFF plugin MLP')
+    parser.add_argument('--q', type=float, default=0.9, help='quantile factor for robust scaling in GLAFF plugin')
 
     parser.add_argument('--gamma', type=float, default=0.1)
     parser.add_argument('--m', type=int, default=24)
