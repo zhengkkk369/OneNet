@@ -125,6 +125,7 @@ def parse_args():
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
     parser.add_argument('--inverse', action='store_true', help='inverse output data', default=False)
+    parser.add_argument('--flag', type=str, default=None, help='use GLAFF plugin when set to "Plugin"')
     parser.add_argument('--method', type=str, default='onenet_fsnet')
 
     # PatchTST
@@ -175,6 +176,14 @@ def parse_args():
                         help='mwt cross atention activation function tanh or softmax')
     parser.add_argument('--moving_avg', default=[24], help='window size of moving average')
 
+    # GLAFF plugin configuration
+    parser.add_argument('--dim', type=int, default=64, help='hidden dimension for GLAFF plugin encoder')
+    parser.add_argument('--head_num', type=int, default=4, help='attention heads for GLAFF plugin encoder')
+    parser.add_argument('--dff', type=int, default=256, help='feedforward dimension for GLAFF plugin encoder')
+    parser.add_argument('--layer_num', type=int, default=2, help='encoder layers for GLAFF plugin encoder')
+    parser.add_argument('--hist_len', type=int, default=96, help='history length for GLAFF plugin MLP')
+    parser.add_argument('--q', type=float, default=0.9, help='quantile factor for robust scaling in GLAFF plugin')
+
     parser.add_argument('--gamma', type=float, default=0.1)
     parser.add_argument('--m', type=int, default=24)
     parser.add_argument('--loss_aug', type=float, default=0.5, help='weight for augmentation loss')
@@ -183,6 +192,19 @@ def parse_args():
     parser.add_argument('--mlp_depth', type=int, default=3)
     parser.add_argument('--mlp_width', type=int, default=256)
     parser.add_argument('--station_lr', type=float, default=0.0001)
+
+    # GLAFF + D3A fusion options
+    parser.add_argument('--time_features', type=int, default=4, help='dimension of timestamp features')
+    parser.add_argument('--energy_threshold', type=float, default=0.05, help='virtual drift energy distance threshold')
+    parser.add_argument('--virtual_min_samples', type=int, default=8, help='minimal samples before virtual drift test')
+    parser.add_argument('--residual_base_sigma', type=float, default=0.1, help='baseline std for residual drift check')
+    parser.add_argument('--residual_mu_thresh', type=float, default=3.0, help='multiplier for residual mean drift trigger')
+    parser.add_argument('--residual_sigma_thresh', type=float, default=3.0, help='multiplier for residual std drift trigger')
+    parser.add_argument('--residual_window', type=int, default=20, help='window size for residual drift detection')
+    parser.add_argument('--glaff_buffer_size', type=int, default=64, help='buffer size for glaff fusion')
+    parser.add_argument('--glaff_backbone', type=str, default='ts2vec', help='backbone experiment dispatched for glaff fusion')
+    parser.add_argument('--glaff_ft_lr', type=float, default=1e-3, help='learning rate for local branch fine-tune')
+    parser.add_argument('--glaff_ft_epochs', type=int, default=1, help='epochs for local branch fine-tune')
 
     parser.add_argument('--sleep_interval', type=int, default=1, help='latent dimension of koopman embedding')
     parser.add_argument('--sleep_epochs', type=int, default=1, help='latent dimension of koopman embedding')

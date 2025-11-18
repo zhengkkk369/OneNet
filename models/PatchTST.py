@@ -8,16 +8,22 @@ from torch import Tensor
 import torch.nn.functional as F
 import numpy as np
 
+from plugin.Plugin.model import Plugin
+
 from layers.PatchTST_backbone import PatchTST_backbone
 from layers.PatchTST_layers import series_decomp
 
 
 class Model(nn.Module):
-    def __init__(self, configs, max_seq_len:Optional[int]=1024, d_k:Optional[int]=None, d_v:Optional[int]=None, norm:str='BatchNorm', attn_dropout:float=0., 
-                 act:str="gelu", key_padding_mask:bool='auto',padding_var:Optional[int]=None, attn_mask:Optional[Tensor]=None, res_attention:bool=True, 
+    def __init__(self, configs, max_seq_len:Optional[int]=1024, d_k:Optional[int]=None, d_v:Optional[int]=None, norm:str='BatchNorm', attn_dropout:float=0.,
+                 act:str="gelu", key_padding_mask:bool='auto',padding_var:Optional[int]=None, attn_mask:Optional[Tensor]=None, res_attention:bool=True,
                  pre_norm:bool=False, store_attn:bool=False, pe:str='zeros', learn_pe:bool=True, pretrain_head:bool=False, head_type = 'flatten', verbose:bool=False, **kwargs):
-        
+
         super().__init__()
+
+        self.flag = getattr(configs, 'flag', None)
+        if self.flag == 'Plugin':
+            self.plugin = Plugin(configs, configs.c_out)
         
         # load parameters
         c_in = configs.enc_in
@@ -77,7 +83,8 @@ class Model(nn.Module):
                                   subtract_last=subtract_last, verbose=verbose, **kwargs)
     
     
-    def forward(self, x):           # x: [Batch, Input length, Channel]
+    def forward(self, x, x_mark_enc=None, x_dec=None, x_mark_dec=None):           # x: [Batch, Input length, Channel]
+        x_enc = x
         if self.decomposition:
             res_init, trend_init = self.decomp_module(x)
             res_init, trend_init = res_init.permute(0,2,1), trend_init.permute(0,2,1)  # x: [Batch, Channel, Input length]
@@ -89,4 +96,10 @@ class Model(nn.Module):
             x = x.permute(0,2,1)    # x: [Batch, Channel, Input length]
             x = self.model(x)
             x = x.permute(0,2,1)    # x: [Batch, Input length, Channel]
+        if self.flag == 'Plugin':
+            x_enc_copy = x_enc.clone()
+            x_mark_enc_copy = None if x_mark_enc is None else x_mark_enc.clone()
+            x_mark_dec_copy = None if x_mark_dec is None else x_mark_dec.clone()
+            if x_mark_enc_copy is not None and x_mark_dec_copy is not None:
+                x = self.plugin(x_enc_copy, x_mark_enc_copy, x, x_mark_dec_copy[:, -self.target_window:, :])
         return x

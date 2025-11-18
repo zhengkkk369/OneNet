@@ -1,5 +1,6 @@
 from data.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred
 from exp.exp_basic import Exp_Basic
+from plugin.Plugin.model import Plugin
 import torch.nn.functional as F
 from layers.Embed import DataEmbedding, DataEmbedding_wo_pos
 from layers.AutoCorrelation import AutoCorrelation, AutoCorrelationLayer
@@ -45,6 +46,11 @@ class net(nn.Module):
         super(net, self).__init__()
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
+        self.flag = getattr(configs, 'flag', None)
+        self.plugin = None
+        if self.flag == 'Plugin':
+            channel = getattr(configs, 'c_out', configs.enc_in)
+            self.plugin = Plugin(configs, channel)
 
         # Decompsition Kernel Size
         kernel_size = 25
@@ -55,39 +61,49 @@ class net(nn.Module):
         if self.individual:
             self.Linear_Seasonal = nn.ModuleList()
             self.Linear_Trend = nn.ModuleList()
-            
+
             for i in range(self.channels):
-                self.Linear_Seasonal.append(nn.Linear(self.seq_len,self.pred_len))
-                self.Linear_Trend.append(nn.Linear(self.seq_len,self.pred_len))
+                self.Linear_Seasonal.append(nn.Linear(self.seq_len, self.pred_len))
+                self.Linear_Trend.append(nn.Linear(self.seq_len, self.pred_len))
 
                 # Use this two lines if you want to visualize the weights
                 # self.Linear_Seasonal[i].weight = nn.Parameter((1/self.seq_len)*torch.ones([self.pred_len,self.seq_len]))
                 # self.Linear_Trend[i].weight = nn.Parameter((1/self.seq_len)*torch.ones([self.pred_len,self.seq_len]))
         else:
-            self.Linear_Seasonal = nn.Linear(self.seq_len,self.pred_len)
-            self.Linear_Trend = nn.Linear(self.seq_len,self.pred_len)
-            
+            self.Linear_Seasonal = nn.Linear(self.seq_len, self.pred_len)
+            self.Linear_Trend = nn.Linear(self.seq_len, self.pred_len)
+
             # Use this two lines if you want to visualize the weights
             # self.Linear_Seasonal.weight = nn.Parameter((1/self.seq_len)*torch.ones([self.pred_len,self.seq_len]))
             # self.Linear_Trend.weight = nn.Parameter((1/self.seq_len)*torch.ones([self.pred_len,self.seq_len]))
         self.device = device
         self.to(device)
-    def forward(self, x):
+
+    def forward(self, x, x_mark_enc=None, x_mark_dec=None):
         # x: [Batch, Input length, Channel]
         seasonal_init, trend_init = self.decompsition(x)
-        seasonal_init, trend_init = seasonal_init.permute(0,2,1), trend_init.permute(0,2,1)
+        seasonal_init, trend_init = seasonal_init.permute(0, 2, 1), trend_init.permute(0, 2, 1)
         if self.individual:
-            seasonal_output = torch.zeros([seasonal_init.size(0),seasonal_init.size(1),self.pred_len],dtype=seasonal_init.dtype).to(seasonal_init.device)
-            trend_output = torch.zeros([trend_init.size(0),trend_init.size(1),self.pred_len],dtype=trend_init.dtype).to(trend_init.device)
+            seasonal_output = torch.zeros(
+                [seasonal_init.size(0), seasonal_init.size(1), self.pred_len], dtype=seasonal_init.dtype
+            ).to(seasonal_init.device)
+            trend_output = torch.zeros(
+                [trend_init.size(0), trend_init.size(1), self.pred_len], dtype=trend_init.dtype
+            ).to(trend_init.device)
             for i in range(self.channels):
-                seasonal_output[:,i,:] = self.Linear_Seasonal[i](seasonal_init[:,i,:])
-                trend_output[:,i,:] = self.Linear_Trend[i](trend_init[:,i,:])
+                seasonal_output[:, i, :] = self.Linear_Seasonal[i](seasonal_init[:, i, :])
+                trend_output[:, i, :] = self.Linear_Trend[i](trend_init[:, i, :])
         else:
             seasonal_output = self.Linear_Seasonal(seasonal_init)
             trend_output = self.Linear_Trend(trend_init)
 
-        x = seasonal_output + trend_output
-        return x.permute(0,2,1) # to [Batch, Output length, Channel]
+        x_out = seasonal_output + trend_output
+        pred = x_out.permute(0, 2, 1)  # to [Batch, Output length, Channel]
+
+        if self.plugin is not None and x_mark_enc is not None and x_mark_dec is not None:
+            pred = self.plugin(x.clone(), x_mark_enc.clone(), pred, x_mark_dec[:, -self.pred_len :, :].clone())
+
+        return pred
 
 class Exp_TS2VecSupervised(Exp_Basic):
     def __init__(self, args):
@@ -308,13 +324,14 @@ class Exp_TS2VecSupervised(Exp_Basic):
             return self._ol_one_batch(dataset_object, batch_x, batch_y, batch_x_mark, batch_y_mark)
 
         batch_x = batch_x.float().to(self.device)
-
         batch_y = batch_y.float().to(self.device)
+        batch_x_mark = batch_x_mark.float().to(self.device)
+        batch_y_mark = batch_y_mark.float().to(self.device)
         if self.args.use_amp:
             with torch.cuda.amp.autocast():
-                outputs = self.model(batch_x)
+                outputs = self.model(batch_x, batch_x_mark, batch_y_mark)
         else:
-            outputs = self.model(batch_x)
+            outputs = self.model(batch_x, batch_x_mark, batch_y_mark)
         f_dim = -1 if self.args.features=='MS' else 0
         batch_y = batch_y[:,-self.args.pred_len:,f_dim:].to(self.device)
         return rearrange(outputs, 'b t d -> b (t d)'), rearrange(batch_y, 'b t d -> b (t d)')
@@ -324,14 +341,15 @@ class Exp_TS2VecSupervised(Exp_Basic):
         criterion = self._select_criterion()
         
         batch_x = batch_x.float().to(self.device)
-
         batch_y = batch_y.float().to(self.device)
+        batch_x_mark = batch_x_mark.float().to(self.device)
+        batch_y_mark = batch_y_mark.float().to(self.device)
         for _ in range(self.n_inner):
             if self.args.use_amp:
                 with torch.cuda.amp.autocast():
-                    outputs = self.model(batch_x)
+                    outputs = self.model(batch_x, batch_x_mark, batch_y_mark)
             else:
-                outputs = self.model(batch_x)
+                outputs = self.model(batch_x, batch_x_mark, batch_y_mark)
 
             outputs = rearrange(outputs, 'b t d -> b (t d)')
             loss = criterion(outputs, true)

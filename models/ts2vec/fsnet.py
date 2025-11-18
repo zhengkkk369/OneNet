@@ -7,6 +7,8 @@ import torch.fft as fft
 from einops import rearrange, reduce
 from torch import nn
 
+from plugin.Plugin.model import Plugin
+
 from .fsnet_ import DilatedConvEncoder
 
 
@@ -191,7 +193,8 @@ class GlobalLocalMultiscaleTSEncoder(nn.Module):
                  freq_mixing: bool,
                  length: int,
                  mode=0,
-                 hidden_dims=64, depth=10, mask_mode='binomial', gamma=0.9):
+                 hidden_dims=64, depth=10, mask_mode='binomial', gamma=0.9,
+                 flag=None, plugin_args=None):
         super().__init__()
 
         self.mode = mode
@@ -210,6 +213,13 @@ class GlobalLocalMultiscaleTSEncoder(nn.Module):
         self.kernels = kernels
         self.num_bands = num_bands
 
+        self.flag = flag
+        self.plugin = None
+        self.pred_len = None
+        if self.flag == 'Plugin' and plugin_args is not None:
+            self.plugin = Plugin(plugin_args, output_dims)
+            self.pred_len = getattr(plugin_args, 'pred_len', None)
+
         self.convs = nn.ModuleList(
             [nn.Conv1d(output_dims, output_dims // 2, k, padding=k - 1) for k in kernels]
         )
@@ -218,7 +228,8 @@ class GlobalLocalMultiscaleTSEncoder(nn.Module):
                                 freq_mixing=freq_mixing, length=length) for b in range(num_bands)]
         )
 
-    def forward(self, x, tcn_output=False, mask='all_true'):  # x: B x T x input_dims
+    def forward(self, x, tcn_output=False, mask='all_true', x_mark_enc=None, x_dec_pred=None, x_mark_dec=None):  # x: B x T x input_dims
+        x_enc = x.clone()
         nan_mask = ~x.isnan().any(axis=-1)
         x[~nan_mask] = 0
         x = self.input_fc(x)  # B x T x Ch
@@ -278,4 +289,11 @@ class GlobalLocalMultiscaleTSEncoder(nn.Module):
 
             global_multiscale = global_multiscale[0]
 
-        return torch.cat([local_multiscale, global_multiscale], dim=-1)
+        out = torch.cat([local_multiscale, global_multiscale], dim=-1)
+
+        if self.plugin is not None and self.pred_len is not None and x_dec_pred is not None \
+                and x_mark_enc is not None and x_mark_dec is not None:
+            out = self.plugin(x_enc.clone(), x_mark_enc.clone(), x_dec_pred,
+                              x_mark_dec.clone()[:, -self.pred_len:, :])
+
+        return out

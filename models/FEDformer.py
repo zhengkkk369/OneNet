@@ -7,6 +7,7 @@ from layers.FourierCorrelation import FourierBlock, FourierCrossAttention
 from layers.MultiWaveletCorrelation import MultiWaveletCross, MultiWaveletTransform
 from layers.SelfAttention_Family import FullAttention, ProbAttention
 from layers.Autoformer_EncDec import Encoder, Decoder, EncoderLayer, DecoderLayer, my_Layernorm, series_decomp, series_decomp_multi
+from plugin.Plugin.model import Plugin
 import math
 import numpy as np
 
@@ -27,6 +28,9 @@ class Model(nn.Module):
         self.label_len = configs.label_len
         self.pred_len = configs.pred_len
         self.output_attention = configs.output_attention
+        self.flag = getattr(configs, 'flag', None)
+        if self.flag == 'Plugin':
+            self.plugin = Plugin(configs, configs.c_out)
 
         # Decomp
         kernel_size = configs.moving_avg
@@ -134,10 +138,17 @@ class Model(nn.Module):
         # final
         dec_out = trend_part + seasonal_part
 
+        pred = dec_out[:, -self.pred_len:, :]
+        if self.flag == 'Plugin':
+            x_enc_copy = x_enc.clone()
+            x_mark_enc_copy = x_mark_enc.clone()
+            x_mark_dec_copy = x_mark_dec.clone()
+            pred = self.plugin(x_enc_copy, x_mark_enc_copy, pred, x_mark_dec_copy[:, -self.pred_len:, :])
+
         if self.output_attention:
-            return dec_out[:, -self.pred_len:, :], attns
+            return pred, attns
         else:
-            return dec_out[:, -self.pred_len:, :]  # [B, L, D]
+            return pred  # [B, L, D]
 
 
 if __name__ == '__main__':
