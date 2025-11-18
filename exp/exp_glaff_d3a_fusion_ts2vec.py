@@ -1,4 +1,4 @@
-"""GLAFF-D3A fusion experiment (TS2Vec backbone by default)."""
+"""GLAFF-D3A fusion experiment for TS2Vec backbone."""
 from exp.exp_glaff_d3a_mixin import D3AFusionMixin
 from exp.exp_ts2vec import Exp_TS2VecSupervised as BaseExp
 
