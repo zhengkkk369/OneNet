@@ -11,7 +11,9 @@ class Plugin(nn.Module):
         self.hist_len = args.hist_len
         self.pred_len = args.pred_len
         self.Encoder = nn.Sequential(
-            nn.Linear(6, args.dim),
+            # Use a lazy projection so the plugin can adapt to varying
+            # timestamp marker dimensions across different datasets/backbones
+            nn.LazyLinear(args.dim),
             nn.TransformerEncoder(
                 nn.TransformerEncoderLayer(
                     d_model=args.dim,
